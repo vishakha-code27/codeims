@@ -7,6 +7,7 @@ RUN mvn -B -DskipTests package
 FROM eclipse-temurin:17-jre
 WORKDIR /app
 COPY --from=build /workspace/target/group-management-0.0.1-SNAPSHOT.jar app.jar
+RUN mkdir -p /var/data
 ENV SPRING_DATASOURCE_URL=jdbc:sqlite:/var/data/group_management.db
 EXPOSE 8082
 ENTRYPOINT ["java", "-jar", "app.jar"]
