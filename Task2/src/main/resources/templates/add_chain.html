@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>Add Chain / Company</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 30px; background: #f6f7f9; }
+        .container { max-width: 520px; margin: auto; background: white; padding: 20px; border-radius: 8px; }
+        label { display: block; margin-top: 12px; }
+        input, select { width: 100%; padding: 10px; margin-top: 6px; box-sizing: border-box; }
+        button { margin-top: 15px; padding: 10px 15px; background: #0b6e4f; color: white; border: none; border-radius: 6px; }
+        .error { color: #a94442; margin-bottom: 10px; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>Add Chain / Company</h1>
+    <div th:if="${error}" class="error" th:text="${error}"></div>
+    <form th:action="@{/chains/add}" method="post">
+        <label for="companyName">Company Name</label>
+        <input id="companyName" name="companyName" type="text" maxlength="255" required th:value="${companyName}">
+
+        <label for="gstnNo">GSTN Number</label>
+        <input id="gstnNo" name="gstnNo" type="text" minlength="15" maxlength="15" pattern="[A-Za-z0-9]{15}"
+               autocomplete="off" required th:value="${gstnNo}">
+
+        <label for="groupId">Group</label>
+        <select id="groupId" name="groupId" required>
+            <option value="">Select a group</option>
+            <option th:each="group : ${groups}"
+                    th:value="${group.groupId}"
+                    th:text="${group.groupName}"
+                    th:selected="${selectedGroupId != null and selectedGroupId == group.groupId}">Group</option>
+        </select>
+        <p th:if="${#lists.isEmpty(groups)}">Create an active group before adding a company.</p>
+        <button type="submit" th:disabled="${#lists.isEmpty(groups)}">Save Company</button>
+    </form>
+    <p><a th:href="@{/}">Back to Dashboard</a></p>
+</div>
+</body>
+</html>

@@ -2,6 +2,8 @@ package com.example.groupmanagement;
 
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -76,20 +78,143 @@ interface GroupRepository extends JpaRepository<GroupModel, Integer> {
     Optional<GroupModel> findByGroupNameIgnoreCase(String groupName);
 }
 
+@Entity
+@Table(name = "chain", uniqueConstraints = @UniqueConstraint(name = "uk_chain_gstn_no", columnNames = "gstn_no"))
+class ChainModel {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "chain_id")
+    private Integer chainId;
+
+    @Column(name = "company_name", nullable = false, length = 255)
+    @NotBlank(message = "Company name cannot be blank")
+    @Size(max = 255, message = "Company name cannot exceed 255 characters")
+    private String companyName;
+
+    @Column(name = "gstn_no", nullable = false, unique = true, length = 15)
+    @NotBlank(message = "GSTN number cannot be blank")
+    @Pattern(regexp = "[A-Z0-9]{15}", message = "GSTN number must contain 15 letters or digits")
+    private String gstnNo;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "group_id", nullable = false)
+    private GroupModel group;
+
+    @Column(name = "is_active", nullable = false)
+    private Boolean isActive = true;
+
+    @Column(name = "created_at", nullable = false, updatable = false)
+    private LocalDateTime createdAt;
+
+    @Column(name = "updated_at", nullable = false)
+    private LocalDateTime updatedAt;
+
+    @PrePersist
+    protected void onCreate() {
+        this.createdAt = LocalDateTime.now();
+        this.updatedAt = LocalDateTime.now();
+        if (this.isActive == null) {
+            this.isActive = true;
+        }
+    }
+
+    @PreUpdate
+    protected void onUpdate() {
+        this.updatedAt = LocalDateTime.now();
+    }
+
+    public Integer getChainId() { return chainId; }
+    public String getCompanyName() { return companyName; }
+    public void setCompanyName(String companyName) { this.companyName = companyName; }
+    public String getGstnNo() { return gstnNo; }
+    public void setGstnNo(String gstnNo) { this.gstnNo = gstnNo; }
+    public GroupModel getGroup() { return group; }
+    public void setGroup(GroupModel group) { this.group = group; }
+    public Boolean getIsActive() { return isActive; }
+    public void setIsActive(Boolean isActive) { this.isActive = isActive; }
+    public LocalDateTime getCreatedAt() { return createdAt; }
+    public LocalDateTime getUpdatedAt() { return updatedAt; }
+}
+
+@Repository
+interface ChainRepository extends JpaRepository<ChainModel, Integer> {
+    List<ChainModel> findByIsActiveTrueOrderByCreatedAtDesc();
+    List<ChainModel> findByGroup_GroupIdAndIsActiveTrueOrderByCreatedAtDesc(Integer groupId);
+    boolean existsByGstnNoIgnoreCase(String gstnNo);
+}
+
 @Controller
 class GroupController {
     private final GroupRepository groupRepository;
+    private final ChainRepository chainRepository;
 
-    public GroupController(GroupRepository groupRepository) {
+    public GroupController(GroupRepository groupRepository, ChainRepository chainRepository) {
         this.groupRepository = groupRepository;
+        this.chainRepository = chainRepository;
     }
 
     @GetMapping("/")
-    public String dashboard(Model model) {
+    public String dashboard(@RequestParam(required = false) Integer groupId, Model model) {
         List<GroupModel> activeGroups = groupRepository.findByIsActiveTrue();
+        List<ChainModel> activeChains = groupId == null
+                ? chainRepository.findByIsActiveTrueOrderByCreatedAtDesc()
+                : chainRepository.findByGroup_GroupIdAndIsActiveTrueOrderByCreatedAtDesc(groupId);
         model.addAttribute("groups", activeGroups);
         model.addAttribute("totalGroups", activeGroups.size());
+        model.addAttribute("chains", activeChains);
+        model.addAttribute("totalChains", activeChains.size());
+        model.addAttribute("selectedGroupId", groupId);
         return "dashboard";
+    }
+
+    @GetMapping("/chains/add")
+    public String addChainForm(Model model) {
+        model.addAttribute("groups", groupRepository.findByIsActiveTrue());
+        return "add_chain";
+    }
+
+    @PostMapping("/chains/add")
+    public String addChain(@RequestParam(required = false) String companyName,
+                           @RequestParam(required = false) String gstnNo,
+                           @RequestParam(required = false) Integer groupId,
+                           Model model,
+                           RedirectAttributes redirectAttributes) {
+        String trimmedCompanyName = companyName == null ? "" : companyName.trim();
+        String normalizedGstn = gstnNo == null ? "" : gstnNo.trim().toUpperCase();
+        Optional<GroupModel> group = groupId == null ? Optional.empty() : groupRepository.findById(groupId);
+
+        String error = null;
+        if (trimmedCompanyName.isEmpty() || normalizedGstn.isEmpty() || groupId == null) {
+            error = "Company name, GSTN number, and group are required.";
+        } else if (trimmedCompanyName.length() > 255) {
+            error = "Company name cannot exceed 255 characters.";
+        } else if (!normalizedGstn.matches("[A-Z0-9]{15}")) {
+            error = "GSTN number must contain exactly 15 letters or digits.";
+        } else if (group.isEmpty() || !Boolean.TRUE.equals(group.get().getIsActive())) {
+            error = "Select an active group.";
+        } else if (chainRepository.existsByGstnNoIgnoreCase(normalizedGstn)) {
+            error = "This GSTN number is already registered.";
+        }
+
+        if (error != null) {
+            model.addAttribute("error", error);
+            model.addAttribute("groups", groupRepository.findByIsActiveTrue());
+            model.addAttribute("companyName", companyName);
+            model.addAttribute("gstnNo", gstnNo);
+            model.addAttribute("selectedGroupId", groupId);
+            return "add_chain";
+        }
+
+        ChainModel chain = new ChainModel();
+        chain.setCompanyName(trimmedCompanyName);
+        chain.setGstnNo(normalizedGstn);
+        chain.setGroup(group.get());
+        chain.setIsActive(true);
+        chainRepository.save(chain);
+
+        redirectAttributes.addFlashAttribute("success", "Company added successfully.");
+        return "redirect:/";
     }
 
     @GetMapping("/add")
