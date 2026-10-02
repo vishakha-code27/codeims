@@ -1,5 +1,4 @@
 package com.codeb.ims;
-
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -8,6 +7,9 @@ import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
     import jakarta.persistence.Column;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
     import org.springframework.boot.CommandLineRunner;
@@ -39,6 +41,7 @@ import org.springframework.web.bind.annotation.ResponseBody;
     import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.time.LocalDate;
 import java.util.List;
     import java.util.Locale;
     import java.util.Optional;
@@ -127,6 +130,37 @@ class Hierarchy {
     public void setBrandName(String brandName) { this.brandName = brandName; }
     public String getSubZone() { return subZone; }
     public void setSubZone(String subZone) { this.subZone = subZone; }
+}
+
+@Entity
+@Table(name = "chain")
+class Chain {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "chain_id")
+    private Integer chainId;
+    @Column(name = "source_hierarchy_id", unique = true)
+    private Long sourceHierarchyId;
+    @Column(name = "group_name", length = 50)
+    private String groupName;
+    @Column(name = "chain_name", nullable = false, length = 100)
+    private String chainName;
+    @Column(name = "brand_name", length = 50)
+    private String brandName;
+    @Column(name = "zone_name", length = 50)
+    private String zoneName;
+
+    public Integer getChainId() { return chainId; }
+    public Long getSourceHierarchyId() { return sourceHierarchyId; }
+    public void setSourceHierarchyId(Long sourceHierarchyId) { this.sourceHierarchyId = sourceHierarchyId; }
+    public String getGroupName() { return groupName; }
+    public void setGroupName(String groupName) { this.groupName = groupName; }
+    public String getChainName() { return chainName; }
+    public void setChainName(String chainName) { this.chainName = chainName; }
+    public String getBrandName() { return brandName; }
+    public void setBrandName(String brandName) { this.brandName = brandName; }
+    public String getZoneName() { return zoneName; }
+    public void setZoneName(String zoneName) { this.zoneName = zoneName; }
 }
 
 @Entity
@@ -281,6 +315,10 @@ interface ClientRepository extends JpaRepository<Client, Long> {}
 
 interface HierarchyRepository extends JpaRepository<Hierarchy, Long> {}
 
+interface ChainRepository extends JpaRepository<Chain, Integer> {
+    Optional<Chain> findBySourceHierarchyId(Long sourceHierarchyId);
+}
+
 interface GroupRepository extends JpaRepository<CustomerGroup, Long> {
     List<CustomerGroup> findByIsActiveTrue();
     Optional<CustomerGroup> findByGroupNameIgnoreCase(String groupName);
@@ -290,28 +328,107 @@ interface InvoiceRepository extends JpaRepository<Invoice, Long> {}
 
 interface EstimateRepository extends JpaRepository<Estimate, Long> {}
 
+@Entity
+@Table(name = "sales_estimates")
+class SalesEstimate {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "estimated_id")
+    private Long estimatedId;
+    @ManyToOne(fetch = FetchType.EAGER, optional = false)
+    @JoinColumn(name = "chain_id", nullable = false)
+    private Chain chain;
+    @Column(name = "group_name", length = 50)
+    private String groupName;
+    @Column(name = "brand_name", length = 50)
+    private String brandName;
+    @Column(name = "zone_name", length = 50)
+    private String zoneName;
+    @Column(name = "service", nullable = false, length = 100)
+    private String service;
+    @Column(name = "qty", nullable = false)
+    private Integer qty;
+    @Column(name = "cost_per_unit", nullable = false)
+    private double costPerUnit;
+    @Column(name = "total_cost", nullable = false)
+    private double totalCost;
+    @Column(name = "delivery_date", nullable = false)
+    private LocalDate deliveryDate;
+    @Column(name = "delivery_details", length = 100)
+    private String deliveryDetails;
+    @Column(name = "status", nullable = false, length = 20)
+    private String status = "Draft";
+    @Column(name = "created_at", nullable = false, updatable = false)
+    private LocalDateTime createdAt;
+    @Column(name = "updated_at", nullable = false)
+    private LocalDateTime updatedAt;
+
+    @PrePersist
+    protected void onCreate() {
+        createdAt = LocalDateTime.now();
+        updatedAt = createdAt;
+    }
+
+    @PreUpdate
+    protected void onUpdate() { updatedAt = LocalDateTime.now(); }
+
+    public Long getEstimatedId() { return estimatedId; }
+    public Chain getChain() { return chain; }
+    public void setChain(Chain chain) { this.chain = chain; }
+    public String getGroupName() { return groupName; }
+    public void setGroupName(String groupName) { this.groupName = groupName; }
+    public String getBrandName() { return brandName; }
+    public void setBrandName(String brandName) { this.brandName = brandName; }
+    public String getZoneName() { return zoneName; }
+    public void setZoneName(String zoneName) { this.zoneName = zoneName; }
+    public String getService() { return service; }
+    public void setService(String service) { this.service = service; }
+    public Integer getQty() { return qty; }
+    public void setQty(Integer qty) { this.qty = qty; }
+    public double getCostPerUnit() { return costPerUnit; }
+    public void setCostPerUnit(double costPerUnit) { this.costPerUnit = costPerUnit; }
+    public double getTotalCost() { return totalCost; }
+    public void setTotalCost(double totalCost) { this.totalCost = totalCost; }
+    public LocalDate getDeliveryDate() { return deliveryDate; }
+    public void setDeliveryDate(LocalDate deliveryDate) { this.deliveryDate = deliveryDate; }
+    public String getDeliveryDetails() { return deliveryDetails; }
+    public void setDeliveryDetails(String deliveryDetails) { this.deliveryDetails = deliveryDetails; }
+    public String getStatus() { return status; }
+    public void setStatus(String status) { this.status = status; }
+    public LocalDateTime getCreatedAt() { return createdAt; }
+    public LocalDateTime getUpdatedAt() { return updatedAt; }
+}
+
+interface SalesEstimateRepository extends JpaRepository<SalesEstimate, Long> {}
+
 @Service
 class ImsService {
     private final ClientRepository clientRepository;
     private final HierarchyRepository hierarchyRepository;
+    private final ChainRepository chainRepository;
     private final GroupRepository groupRepository;
     private final InvoiceRepository invoiceRepository;
     private final EstimateRepository estimateRepository;
+    private final SalesEstimateRepository salesEstimateRepository;
         private final UserRepository userRepository;
         private final PasswordEncoder passwordEncoder;
 
     public ImsService(ClientRepository clientRepository,
                       HierarchyRepository hierarchyRepository,
+                      ChainRepository chainRepository,
                       GroupRepository groupRepository,
                       InvoiceRepository invoiceRepository,
                           EstimateRepository estimateRepository,
+                          SalesEstimateRepository salesEstimateRepository,
                           UserRepository userRepository,
                           PasswordEncoder passwordEncoder) {
         this.clientRepository = clientRepository;
         this.hierarchyRepository = hierarchyRepository;
+        this.chainRepository = chainRepository;
         this.groupRepository = groupRepository;
         this.invoiceRepository = invoiceRepository;
         this.estimateRepository = estimateRepository;
+        this.salesEstimateRepository = salesEstimateRepository;
                 this.userRepository = userRepository;
                 this.passwordEncoder = passwordEncoder;
     }
@@ -328,7 +445,30 @@ class ImsService {
         }
 
     public List<Hierarchy> getAllHierarchy() { return hierarchyRepository.findAll(); }
-    public void saveHierarchy(Hierarchy hierarchy) { hierarchyRepository.save(hierarchy); }
+    public void saveHierarchy(Hierarchy hierarchy) {
+        Hierarchy saved = hierarchyRepository.save(hierarchy);
+        saveChainFromHierarchy(saved);
+    }
+
+    public List<Chain> getAllChains() {
+        for (Hierarchy hierarchy : hierarchyRepository.findAll()) saveChainFromHierarchy(hierarchy);
+        return chainRepository.findAll();
+    }
+
+    public Chain getChain(Integer id) {
+        return chainRepository.findById(id).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Chain not found"));
+    }
+
+    private void saveChainFromHierarchy(Hierarchy hierarchy) {
+        if (hierarchy.getChainName() == null || hierarchy.getChainName().isBlank()) return;
+        Chain chain = chainRepository.findBySourceHierarchyId(hierarchy.getId()).orElseGet(Chain::new);
+        chain.setSourceHierarchyId(hierarchy.getId());
+        chain.setGroupName(hierarchy.getGroupName());
+        chain.setChainName(hierarchy.getChainName());
+        chain.setBrandName(hierarchy.getBrandName());
+        chain.setZoneName(hierarchy.getSubZone());
+        chainRepository.save(chain);
+    }
 
     public List<CustomerGroup> getAllGroups() { return groupRepository.findByIsActiveTrue(); }
     public void saveGroup(CustomerGroup group) { groupRepository.save(group); }
@@ -348,6 +488,15 @@ class ImsService {
 
     public List<Estimate> getAllEstimates() { return estimateRepository.findAll(); }
     public void saveEstimate(Estimate estimate) { estimateRepository.save(estimate); }
+
+    public List<SalesEstimate> getAllSalesEstimates() { return salesEstimateRepository.findAll(); }
+    public void saveSalesEstimate(SalesEstimate estimate) { salesEstimateRepository.save(estimate); }
+    public void updateSalesEstimateStatus(Long id, String status) {
+        SalesEstimate estimate = salesEstimateRepository.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+        estimate.setStatus(status);
+        salesEstimateRepository.save(estimate);
+    }
 
         public List<User> getAllUsers() { return userRepository.findAll(); }
         public long getActiveUserCount() { return userRepository.countByEnabledTrue(); }
@@ -578,7 +727,8 @@ class ImsController {
             List<Client> clients = imsService.getAllClients();
             List<Hierarchy> hierarchy = imsService.getAllHierarchy();
             List<Invoice> invoices = imsService.getAllInvoices();
-            List<Estimate> estimates = imsService.getAllEstimates();
+            List<SalesEstimate> estimates = imsService.getAllSalesEstimates();
+            List<Chain> chains = imsService.getAllChains();
             boolean admin = authentication.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN"));
                 double billing = 0;
                 for (Invoice invoice : invoices) billing += invoice.getTotalAmount();
@@ -589,12 +739,13 @@ class ImsController {
                     *{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font:15px/1.5 "Segoe UI",sans-serif}
                     header{background:var(--ink);color:white;padding:20px max(24px,calc((100% - 1240px)/2));display:flex;justify-content:space-between;align-items:center;gap:18px}
                     header h1{font-size:21px;margin:0}header small{color:#b9c8bf}header form{margin:0}
-                    main{max-width:1240px;margin:28px auto;padding:0 22px}.stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-bottom:28px}
+                    main{max-width:1240px;margin:28px auto;padding:0 22px}.stats{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;margin-bottom:28px}
                     .stat{background:var(--white);border:1px solid var(--line);padding:16px 18px}.stat label{display:block;color:var(--muted);font-size:13px}.stat strong{font-size:24px}
                     section{margin:30px 0}h2{font-size:18px;margin:0 0 12px}form.entry{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 12px}
                     input,select,button{font:inherit;padding:9px 11px;border:1px solid #c7d2ca;border-radius:4px;background:white;color:var(--ink)}input,select{min-width:135px;flex:1}
                     button{background:var(--green);border-color:var(--green);color:white;cursor:pointer;font-weight:600}button:hover{filter:brightness(1.1)}button.secondary{background:#fff;color:var(--ink);border-color:var(--line)}
                     .table-wrap{overflow:auto;background:white;border:1px solid var(--line)}table{width:100%;border-collapse:collapse;min-width:700px}th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top}th{font-size:12px;text-transform:uppercase;color:var(--muted);background:#f8faf8}td form{margin:0}td input,td select{min-width:100px;padding:6px}.muted{color:var(--muted)}.admin{border-top:3px solid var(--lime);padding-top:20px}
+                    @media(max-width:980px){.stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
                     @media(max-width:680px){header{align-items:flex-start;padding:18px;flex-direction:column}main{margin:18px auto;padding:0 14px}.stats{grid-template-columns:1fr}.stat{padding:12px 15px}}
                     </style></head><body>
                     """);
@@ -604,7 +755,9 @@ class ImsController {
                     .append("<button class='secondary' type='submit'>Sign out</button></form></header><main>")
                     .append("<div class='stats'><div class='stat'><label>Total clients</label><strong>").append(clients.size())
                     .append("</strong></div><div class='stat'><label>Active users</label><strong>").append(imsService.getActiveUserCount())
-                    .append("</strong></div><div class='stat'><label>Total billing incl. GST</label><strong>INR ").append(money(billing)).append("</strong></div></div>");
+                    .append("</strong></div><div class='stat'><label>Total billing incl. GST</label><strong>INR ").append(money(billing))
+                    .append("</strong></div><div class='stat'><label>Estimates</label><strong>").append(estimates.size())
+                    .append("</strong></div><div class='stat'><label>Estimated value</label><strong>INR ").append(money(estimates.stream().mapToDouble(SalesEstimate::getTotalCost).sum())).append("</strong></div></div>");
 
             html.append("<section><h2>Clients</h2><form class='entry' action='/add-client' method='post'>").append(csrfField(csrf))
                     .append("<input name='name' placeholder='Client name' required><input type='email' name='email' placeholder='Email' required><input name='phone' placeholder='Phone'><input name='company' placeholder='Company'><button>Add client</button></form>")
@@ -621,7 +774,7 @@ class ImsController {
                         .append("'></td><td><input form='").append(formId).append("' name='company' value='").append(escape(client.getCompany())).append("'></td><td><button form='").append(formId).append("' type='submit'>Save</button></td></tr>");
             }
             html.append("</table></div></section><section><h2>Business structure</h2><form class='entry' action='/add-hierarchy' method='post'>").append(csrfField(csrf))
-                    .append("<input name='groupName' placeholder='Group' required><input name='chainName' placeholder='Chain'><input name='brandName' placeholder='Brand'><input name='subZone' placeholder='Subzone'><button>Add structure</button></form>")
+                    .append("<input name='groupName' maxlength='50' placeholder='Group' required><input name='chainName' maxlength='100' placeholder='Chain' required><input name='brandName' maxlength='50' placeholder='Brand'><input name='subZone' maxlength='50' placeholder='Zone / subzone'><button>Add structure</button></form>")
                     .append("<div class='table-wrap'><table><tr><th>Group</th><th>Chain</th><th>Brand</th><th>Subzone</th></tr>");
             for (Hierarchy item : hierarchy) {
                 html.append("<tr><td>").append(escape(item.getGroupName())).append("</td><td>").append(escape(item.getChainName()))
@@ -646,16 +799,31 @@ class ImsController {
                         .append("'><button>Save</button></form></td>");
                 html.append("</tr>");
             }
-            html.append("</table></div></section><section><h2>Estimates</h2><form class='entry' action='/add-estimate' method='post'>").append(csrfField(csrf))
-                    .append("<input name='clientName' placeholder='Client name' required><input type='number' min='0.01' step='0.01' name='amount' placeholder='Taxable amount (INR)' required>")
-                    .append(gstOptions()).append("<select name='status'><option>Draft</option><option>Approved</option><option>Rejected</option></select><button>Create estimate</button></form>")
-                    .append("<div class='table-wrap'><table><tr><th>Client</th><th>Taxable</th><th>GST</th><th>Total</th><th>Status</th></tr>");
-            for (Estimate estimate : estimates) {
-                html.append("<tr><td>").append(escape(estimate.getClientName())).append("</td><td>INR ").append(money(estimate.getAmount()))
-                        .append("</td><td>").append(taxDisplay(estimate.getGstRate(), estimate.getGstAmount(), estimate.getGstType()))
-                        .append("</td><td>INR ").append(money(estimate.getTotalAmount())).append("</td><td>").append(escape(estimate.getStatus())).append("</td></tr>");
-            }
-            html.append("</table></div></section>");
+                html.append("</table></div></section><section><h2>Estimate management</h2><form class='entry' action='/add-estimate' method='post'>").append(csrfField(csrf))
+                    .append("<select name='chainId' aria-label='Client chain' required><option value=''>Select client / chain</option>");
+                for (Chain chain : chains) {
+                html.append("<option value='").append(chain.getChainId()).append("'>").append(escape(chain.getChainName()))
+                    .append(" · ").append(escape(chain.getGroupName())).append(" · ").append(escape(chain.getBrandName())).append("</option>");
+                }
+                html.append("</select><input name='service' maxlength='100' placeholder='Service' required><input type='number' name='qty' min='1' step='1' placeholder='Quantity' required>")
+                    .append("<input type='number' name='costPerUnit' min='0.01' step='0.01' placeholder='Cost per unit (INR)' required><input type='date' name='deliveryDate' required>")
+                    .append("<input name='deliveryDetails' maxlength='100' placeholder='Delivery details'><button>Create estimate</button></form>")
+                    .append("<div class='table-wrap'><table><tr><th>Client / hierarchy</th><th>Service</th><th>Qty</th><th>Unit cost</th><th>Total</th><th>Delivery</th><th>Status</th><th>Update</th></tr>");
+                for (SalesEstimate estimate : estimates) {
+                Chain chain = estimate.getChain();
+                html.append("<tr><td>").append(escape(chain.getChainName())).append("<br><span class='muted'>")
+                    .append(escape(estimate.getGroupName())).append(" · ").append(escape(estimate.getBrandName())).append(" · ").append(escape(estimate.getZoneName()))
+                    .append("</span></td><td>").append(escape(estimate.getService())).append("</td><td>").append(estimate.getQty())
+                    .append("</td><td>INR ").append(money(estimate.getCostPerUnit())).append("</td><td>INR ").append(money(estimate.getTotalCost()))
+                    .append("</td><td>").append(estimate.getDeliveryDate()).append("<br><span class='muted'>").append(escape(estimate.getDeliveryDetails()))
+                    .append("</span></td><td>").append(escape(estimate.getStatus())).append("</td><td><form method='post' action='/estimates/")
+                    .append(estimate.getEstimatedId()).append("/status'>").append(csrfField(csrf)).append("<select name='status'>");
+                for (String status : List.of("Draft", "Sent", "Approved", "Rejected")) {
+                    html.append("<option").append(status.equals(estimate.getStatus()) ? " selected" : "").append(">").append(status).append("</option>");
+                }
+                html.append("</select><button>Save</button></form></td></tr>");
+                }
+                html.append("</table></div></section>");
             if (admin) appendAdminUsers(html, csrf, imsService.getAllUsers());
             return html.append("</main></body></html>").toString();
         }
@@ -899,22 +1067,43 @@ class ImsController {
         }
 
     @PostMapping("/add-estimate")
-        public String addEstimate(@RequestParam String clientName, @RequestParam double amount,
-                                     @RequestParam double gstRate, @RequestParam String gstType, @RequestParam String status) {
-            validateBilling(amount, gstRate);
-            requireChoice(status, "Draft", "Approved", "Rejected");
-                status = canonicalChoice(status, "Draft", "Approved", "Rejected");
-                requireChoice(gstType, "INTRA_STATE", "INTER_STATE");
-                    gstType = gstType.toUpperCase(Locale.ROOT);
-        Estimate estimate = new Estimate();
-        estimate.setClientName(clientName);
-            estimate.setAmount(roundMoney(amount));
-            estimate.setGstRate(gstRate);
-                estimate.setGstType(gstType);
-                estimate.setGstAmount(roundMoney(estimate.getAmount() * gstRate / 100));
-                estimate.setTotalAmount(roundMoney(estimate.getAmount() + estimate.getGstAmount()));
-        estimate.setStatus(status);
-        imsService.saveEstimate(estimate);
+    public String addEstimate(@RequestParam Integer chainId, @RequestParam String service,
+                              @RequestParam int qty, @RequestParam double costPerUnit,
+                              @RequestParam LocalDate deliveryDate,
+                              @RequestParam(required = false) String deliveryDetails) {
+        String normalizedService = service == null ? "" : service.trim();
+        String normalizedDetails = deliveryDetails == null ? "" : deliveryDetails.trim();
+        if (normalizedService.isBlank() || normalizedService.length() > 100 || qty <= 0
+                || !Double.isFinite(costPerUnit) || costPerUnit <= 0 || costPerUnit != roundMoney(costPerUnit)
+                || normalizedDetails.length() > 100) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Enter a service, positive quantity and valid cost and delivery details");
+        }
+
+        Chain chain = imsService.getChain(chainId);
+        SalesEstimate estimate = new SalesEstimate();
+        estimate.setChain(chain);
+        estimate.setGroupName(chain.getGroupName());
+        estimate.setBrandName(chain.getBrandName());
+        estimate.setZoneName(chain.getZoneName());
+        estimate.setService(normalizedService);
+        estimate.setQty(qty);
+        double totalCost = roundMoney(qty * costPerUnit);
+        if (!Double.isFinite(totalCost)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Estimated total is outside the supported range");
+        }
+        estimate.setCostPerUnit(costPerUnit);
+        estimate.setTotalCost(totalCost);
+        estimate.setDeliveryDate(deliveryDate);
+        estimate.setDeliveryDetails(normalizedDetails);
+        estimate.setStatus("Draft");
+        imsService.saveSalesEstimate(estimate);
+        return "redirect:/";
+    }
+
+    @PostMapping("/estimates/{id}/status")
+    public String updateEstimateStatus(@PathVariable Long id, @RequestParam String status) {
+        requireChoice(status, "Draft", "Sent", "Approved", "Rejected");
+        imsService.updateSalesEstimateStatus(id, canonicalChoice(status, "Draft", "Sent", "Approved", "Rejected"));
         return "redirect:/";
     }
 
