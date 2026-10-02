@@ -203,9 +203,45 @@ class ZoneModel {
     @Column(name = "zone_id")
     private Integer zoneId;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "brand_id")
+    @Column(name = "zone_name", nullable = false, length = 50)
+    @NotBlank(message = "Zone name cannot be blank")
+    @Size(max = 50, message = "Zone name cannot exceed 50 characters")
+    private String zoneName;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "brand_id", nullable = false)
     private BrandModel brand;
+
+    @Column(name = "is_active", nullable = false)
+    private Boolean isActive = true;
+
+    @Column(name = "created_at", nullable = false, updatable = false)
+    private LocalDateTime createdAt;
+
+    @Column(name = "updated_at", nullable = false)
+    private LocalDateTime updatedAt;
+
+    @PrePersist
+    protected void onCreate() {
+        this.createdAt = LocalDateTime.now();
+        this.updatedAt = LocalDateTime.now();
+        if (this.isActive == null) this.isActive = true;
+    }
+
+    @PreUpdate
+    protected void onUpdate() {
+        this.updatedAt = LocalDateTime.now();
+    }
+
+    public Integer getZoneId() { return zoneId; }
+    public String getZoneName() { return zoneName; }
+    public void setZoneName(String zoneName) { this.zoneName = zoneName; }
+    public BrandModel getBrand() { return brand; }
+    public void setBrand(BrandModel brand) { this.brand = brand; }
+    public Boolean getIsActive() { return isActive; }
+    public void setIsActive(Boolean isActive) { this.isActive = isActive; }
+    public LocalDateTime getCreatedAt() { return createdAt; }
+    public LocalDateTime getUpdatedAt() { return updatedAt; }
 }
 
 @Repository
@@ -216,6 +252,7 @@ interface BrandRepository extends JpaRepository<BrandModel, Integer> {
 @Repository
 interface ZoneRepository extends JpaRepository<ZoneModel, Integer> {
     boolean existsByBrand_BrandId(Integer brandId);
+    List<ZoneModel> findByIsActiveTrueOrderByCreatedAtDesc();
 }
 
 @Controller
@@ -235,24 +272,42 @@ class GroupController {
 
     @GetMapping("/")
     public String dashboard(@RequestParam(required = false) Integer groupId,
-                            @RequestParam(required = false) Integer companyId, Model model) {
+                    @RequestParam(required = false) Integer companyId,
+                    @RequestParam(required = false) Integer zoneBrandId,
+                    @RequestParam(required = false) Integer zoneCompanyId,
+                    @RequestParam(required = false) Integer zoneGroupId,
+                    Model model) {
         List<GroupModel> activeGroups = groupRepository.findByIsActiveTrue();
+        List<ChainModel> allActiveChains = chainRepository.findByIsActiveTrueOrderByCreatedAtDesc();
+        List<BrandModel> allActiveBrands = brandRepository.findByIsActiveTrueOrderByCreatedAtDesc();
+        List<ZoneModel> activeZones = zoneRepository.findByIsActiveTrueOrderByCreatedAtDesc();
         List<ChainModel> activeChains = groupId == null
-                ? chainRepository.findByIsActiveTrueOrderByCreatedAtDesc()
+            ? allActiveChains
                 : chainRepository.findByGroup_GroupIdAndIsActiveTrueOrderByCreatedAtDesc(groupId);
-        List<BrandModel> activeBrands = brandRepository.findByIsActiveTrueOrderByCreatedAtDesc().stream()
+        List<BrandModel> activeBrands = allActiveBrands.stream()
                 .filter(brand -> companyId == null || brand.getChain().getChainId().equals(companyId))
                 .filter(brand -> groupId == null || brand.getChain().getGroup().getGroupId().equals(groupId))
                 .toList();
+        List<ZoneModel> filteredZones = activeZones.stream()
+            .filter(zone -> zoneBrandId == null || zone.getBrand().getBrandId().equals(zoneBrandId))
+            .filter(zone -> zoneCompanyId == null || zone.getBrand().getChain().getChainId().equals(zoneCompanyId))
+            .filter(zone -> zoneGroupId == null || zone.getBrand().getChain().getGroup().getGroupId().equals(zoneGroupId))
+            .toList();
         model.addAttribute("groups", activeGroups);
         model.addAttribute("totalGroups", activeGroups.size());
         model.addAttribute("chains", activeChains);
-        model.addAttribute("totalChains", activeChains.size());
+        model.addAttribute("totalChains", allActiveChains.size());
         model.addAttribute("brands", activeBrands);
-        model.addAttribute("totalBrands", activeBrands.size());
-        model.addAttribute("brandCompanies", chainRepository.findByIsActiveTrueOrderByCreatedAtDesc());
+        model.addAttribute("totalBrands", allActiveBrands.size());
+        model.addAttribute("totalZones", activeZones.size());
+        model.addAttribute("zones", filteredZones);
+        model.addAttribute("zoneBrands", allActiveBrands);
+        model.addAttribute("brandCompanies", allActiveChains);
         model.addAttribute("selectedGroupId", groupId);
         model.addAttribute("selectedCompanyId", companyId);
+        model.addAttribute("selectedZoneBrandId", zoneBrandId);
+        model.addAttribute("selectedZoneCompanyId", zoneCompanyId);
+        model.addAttribute("selectedZoneGroupId", zoneGroupId);
         return "dashboard";
     }
 
@@ -352,6 +407,103 @@ class GroupController {
             redirectAttributes.addFlashAttribute("success", "Brand deactivated successfully.");
         }
         return "redirect:/#brands";
+    }
+
+    @GetMapping("/zones/add")
+    public String addZoneForm(Model model) {
+        model.addAttribute("brands", brandRepository.findByIsActiveTrueOrderByCreatedAtDesc());
+        model.addAttribute("formAction", "/zones/add");
+        return "zone_form";
+    }
+
+    @PostMapping("/zones/add")
+    public String addZone(@RequestParam(required = false) String zoneName,
+                          @RequestParam(required = false) Integer brandId,
+                          Model model, RedirectAttributes redirectAttributes) {
+        String trimmedName = zoneName == null ? "" : zoneName.trim();
+        Optional<BrandModel> brand = brandId == null ? Optional.empty() : brandRepository.findById(brandId);
+        String error = trimmedName.isEmpty() || trimmedName.length() > 50
+                ? "Zone name is required and cannot exceed 50 characters."
+                : brand.isEmpty() || !Boolean.TRUE.equals(brand.get().getIsActive())
+                    ? "Select an active brand." : null;
+        if (error != null) {
+            model.addAttribute("error", error);
+            model.addAttribute("zoneName", zoneName);
+            model.addAttribute("selectedBrandId", brandId);
+            model.addAttribute("brands", brandRepository.findByIsActiveTrueOrderByCreatedAtDesc());
+            model.addAttribute("formAction", "/zones/add");
+            return "zone_form";
+        }
+
+        ZoneModel zone = new ZoneModel();
+        zone.setZoneName(trimmedName);
+        zone.setBrand(brand.orElseThrow());
+        zone.setIsActive(true);
+        zoneRepository.save(zone);
+        redirectAttributes.addFlashAttribute("success", "Zone added successfully.");
+        return "redirect:/#zones";
+    }
+
+    @GetMapping("/zones/edit/{id}")
+    public String editZoneForm(@PathVariable Integer id, Model model, RedirectAttributes redirectAttributes) {
+        Optional<ZoneModel> zone = zoneRepository.findById(id);
+        if (zone.isEmpty() || !Boolean.TRUE.equals(zone.get().getIsActive())) {
+            redirectAttributes.addFlashAttribute("error", "Active zone not found.");
+            return "redirect:/#zones";
+        }
+        model.addAttribute("zone", zone.get());
+        model.addAttribute("brands", brandRepository.findByIsActiveTrueOrderByCreatedAtDesc());
+        model.addAttribute("selectedBrandId", zone.get().getBrand().getBrandId());
+        model.addAttribute("formAction", "/zones/edit/" + id);
+        return "zone_form";
+    }
+
+    @PostMapping("/zones/edit/{id}")
+    public String editZone(@PathVariable Integer id,
+                           @RequestParam(required = false) String zoneName,
+                           @RequestParam(required = false) Integer brandId,
+                           Model model, RedirectAttributes redirectAttributes) {
+        Optional<ZoneModel> zone = zoneRepository.findById(id);
+        Optional<BrandModel> brand = brandId == null ? Optional.empty() : brandRepository.findById(brandId);
+        String trimmedName = zoneName == null ? "" : zoneName.trim();
+        String error = zone.isEmpty() || !Boolean.TRUE.equals(zone.get().getIsActive())
+                ? "Active zone not found."
+                : trimmedName.isEmpty() || trimmedName.length() > 50
+                    ? "Zone name is required and cannot exceed 50 characters."
+                    : brand.isEmpty() || !Boolean.TRUE.equals(brand.get().getIsActive())
+                        ? "Select an active brand." : null;
+        if (error != null) {
+            if (zone.isEmpty() || !Boolean.TRUE.equals(zone.get().getIsActive())) {
+                redirectAttributes.addFlashAttribute("error", error);
+                return "redirect:/#zones";
+            }
+            model.addAttribute("error", error);
+            model.addAttribute("zone", zone.get());
+            model.addAttribute("zoneName", zoneName);
+            model.addAttribute("brands", brandRepository.findByIsActiveTrueOrderByCreatedAtDesc());
+            model.addAttribute("selectedBrandId", brandId);
+            model.addAttribute("formAction", "/zones/edit/" + id);
+            return "zone_form";
+        }
+
+        zone.get().setZoneName(trimmedName);
+        zone.get().setBrand(brand.get());
+        zoneRepository.save(zone.get());
+        redirectAttributes.addFlashAttribute("success", "Zone updated successfully.");
+        return "redirect:/#zones";
+    }
+
+    @PostMapping("/zones/delete/{id}")
+    public String deleteZone(@PathVariable Integer id, RedirectAttributes redirectAttributes) {
+        Optional<ZoneModel> zone = zoneRepository.findById(id);
+        if (zone.isEmpty() || !Boolean.TRUE.equals(zone.get().getIsActive())) {
+            redirectAttributes.addFlashAttribute("error", "Active zone not found.");
+        } else {
+            zone.get().setIsActive(false);
+            zoneRepository.save(zone.get());
+            redirectAttributes.addFlashAttribute("success", "Zone deactivated successfully.");
+        }
+        return "redirect:/#zones";
     }
 
     @GetMapping("/chains/add")

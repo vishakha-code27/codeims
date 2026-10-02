@@ -17,6 +17,14 @@
         select, .filter button { padding: 8px; }
         .actions { display: flex; gap: 10px; align-items: center; }
         .actions form { margin: 0; }
+        .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin: 18px 0 28px; }
+        .metric { background: white; border-left: 4px solid #0b6e4f; padding: 12px 16px; }
+        .metric strong { display: block; font-size: 1.5rem; margin-top: 4px; }
+        .zone-layout { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 20px; align-items: start; }
+        .zone-filters { background: white; padding: 16px; }
+        .zone-filters label { display: block; margin: 12px 0 5px; }
+        .zone-filters select { box-sizing: border-box; width: 100%; }
+        @media (max-width: 700px) { .zone-layout { grid-template-columns: 1fr; } }
     </style>
 </head>
 <body>
@@ -28,6 +36,13 @@
 
     <div th:if="${success}" class="alert success" th:text="${success}"></div>
     <div th:if="${error}" class="alert error" th:text="${error}"></div>
+
+    <div class="metrics" aria-label="Management totals">
+        <div class="metric">Total Groups<strong th:text="${totalGroups}">0</strong></div>
+        <div class="metric">Total Companies<strong th:text="${totalChains}">0</strong></div>
+        <div class="metric">Total Brands<strong th:text="${totalBrands}">0</strong></div>
+        <div class="metric">Total Zones<strong th:text="${totalZones}">0</strong></div>
+    </div>
 
     <section id="groups">
     <h2>Manage Groups</h2>
@@ -164,6 +179,75 @@
             </tr>
             </tbody>
         </table>
+    </section>
+
+    <section id="zones">
+        <div class="header">
+            <h2>Manage Zones</h2>
+            <a class="button" th:href="@{/zones/add}">Add Zone</a>
+        </div>
+        <p>Active zones: <strong th:text="${totalZones}">0</strong></p>
+        <div class="zone-layout">
+            <form class="zone-filters" th:action="@{/#zones}" method="get">
+                <h3>Filter Zones</h3>
+                <label for="zoneBrandId">Brand</label>
+                <select id="zoneBrandId" name="zoneBrandId">
+                    <option value="">All brands</option>
+                    <option th:each="brand : ${zoneBrands}"
+                            th:value="${brand.brandId}"
+                            th:text="${brand.brandName}"
+                            th:selected="${selectedZoneBrandId != null and selectedZoneBrandId == brand.brandId}">Brand</option>
+                </select>
+                <label for="zoneCompanyId">Company</label>
+                <select id="zoneCompanyId" name="zoneCompanyId">
+                    <option value="">All companies</option>
+                    <option th:each="company : ${brandCompanies}"
+                            th:value="${company.chainId}"
+                            th:text="${company.companyName}"
+                            th:selected="${selectedZoneCompanyId != null and selectedZoneCompanyId == company.chainId}">Company</option>
+                </select>
+                <label for="zoneGroupId">Group</label>
+                <select id="zoneGroupId" name="zoneGroupId">
+                    <option value="">All groups</option>
+                    <option th:each="group : ${groups}"
+                            th:value="${group.groupId}"
+                            th:text="${group.groupName}"
+                            th:selected="${selectedZoneGroupId != null and selectedZoneGroupId == group.groupId}">Group</option>
+                </select>
+                <button type="submit">Apply Filters</button>
+                <a th:href="@{/#zones}">Clear</a>
+            </form>
+            <table>
+                <thead>
+                <tr>
+                    <th>Sr. No.</th>
+                    <th>Zone</th>
+                    <th>Brand</th>
+                    <th>Company</th>
+                    <th>Group</th>
+                    <th>Actions</th>
+                </tr>
+                </thead>
+                <tbody>
+                <tr th:each="zone, status : ${zones}">
+                    <td th:text="${status.count}">1</td>
+                    <td th:text="${zone.zoneName}">Zone</td>
+                    <td th:text="${zone.brand.brandName}">Brand</td>
+                    <td th:text="${zone.brand.chain.companyName}">Company</td>
+                    <td th:text="${zone.brand.chain.group.groupName}">Group</td>
+                    <td class="actions">
+                        <a th:href="@{'/zones/edit/' + ${zone.zoneId}}">Edit</a>
+                        <form th:action="@{'/zones/delete/' + ${zone.zoneId}}" method="post">
+                            <button type="submit" onclick="return confirm('Deactivate this zone?')">Delete</button>
+                        </form>
+                    </td>
+                </tr>
+                <tr th:if="${#lists.isEmpty(zones)}">
+                    <td colspan="6">No zones found for these filters.</td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
     </section>
 </div>
 </body>
