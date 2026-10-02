@@ -9,3 +9,13 @@ services:
     dockerContext: ./Task2
     healthCheckPath: /
     autoDeployTrigger: commit
+  - type: web
+    name: codeb-ims
+    runtime: docker
+    plan: free
+    region: singapore
+    branch: main
+    dockerfilePath: ./ims/Dockerfile
+    dockerContext: ./ims
+    healthCheckPath: /login
+    autoDeployTrigger: commit
