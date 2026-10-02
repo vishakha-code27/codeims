@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: ims-zone-demo
+    runtime: docker
+    plan: free
+    region: singapore
+    branch: main
+    dockerfilePath: ./Task2/Dockerfile
+    dockerContext: ./Task2
+    healthCheckPath: /
+    autoDeployTrigger: commit
