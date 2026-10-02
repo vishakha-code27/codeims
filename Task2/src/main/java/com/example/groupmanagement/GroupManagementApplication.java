@@ -144,28 +144,214 @@ interface ChainRepository extends JpaRepository<ChainModel, Integer> {
     boolean existsByGstnNoIgnoreCase(String gstnNo);
 }
 
+@Entity
+@Table(name = "brand")
+class BrandModel {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "brand_id")
+    private Integer brandId;
+
+    @Column(name = "brand_name", nullable = false, length = 50)
+    @NotBlank(message = "Brand name cannot be blank")
+    @Size(max = 50, message = "Brand name cannot exceed 50 characters")
+    private String brandName;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "chain_id", nullable = false)
+    private ChainModel chain;
+
+    @Column(name = "is_active", nullable = false)
+    private Boolean isActive = true;
+
+    @Column(name = "created_at", nullable = false, updatable = false)
+    private LocalDateTime createdAt;
+
+    @Column(name = "updated_at", nullable = false)
+    private LocalDateTime updatedAt;
+
+    @PrePersist
+    protected void onCreate() {
+        this.createdAt = LocalDateTime.now();
+        this.updatedAt = LocalDateTime.now();
+        if (this.isActive == null) this.isActive = true;
+    }
+
+    @PreUpdate
+    protected void onUpdate() {
+        this.updatedAt = LocalDateTime.now();
+    }
+
+    public Integer getBrandId() { return brandId; }
+    public String getBrandName() { return brandName; }
+    public void setBrandName(String brandName) { this.brandName = brandName; }
+    public ChainModel getChain() { return chain; }
+    public void setChain(ChainModel chain) { this.chain = chain; }
+    public Boolean getIsActive() { return isActive; }
+    public void setIsActive(Boolean isActive) { this.isActive = isActive; }
+    public LocalDateTime getCreatedAt() { return createdAt; }
+    public LocalDateTime getUpdatedAt() { return updatedAt; }
+}
+
+@Entity
+@Table(name = "zone")
+class ZoneModel {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "zone_id")
+    private Integer zoneId;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "brand_id")
+    private BrandModel brand;
+}
+
+@Repository
+interface BrandRepository extends JpaRepository<BrandModel, Integer> {
+    List<BrandModel> findByIsActiveTrueOrderByCreatedAtDesc();
+}
+
+@Repository
+interface ZoneRepository extends JpaRepository<ZoneModel, Integer> {
+    boolean existsByBrand_BrandId(Integer brandId);
+}
+
 @Controller
 class GroupController {
     private final GroupRepository groupRepository;
     private final ChainRepository chainRepository;
+    private final BrandRepository brandRepository;
+    private final ZoneRepository zoneRepository;
 
-    public GroupController(GroupRepository groupRepository, ChainRepository chainRepository) {
+    public GroupController(GroupRepository groupRepository, ChainRepository chainRepository,
+                           BrandRepository brandRepository, ZoneRepository zoneRepository) {
         this.groupRepository = groupRepository;
         this.chainRepository = chainRepository;
+        this.brandRepository = brandRepository;
+        this.zoneRepository = zoneRepository;
     }
 
     @GetMapping("/")
-    public String dashboard(@RequestParam(required = false) Integer groupId, Model model) {
+    public String dashboard(@RequestParam(required = false) Integer groupId,
+                            @RequestParam(required = false) Integer companyId, Model model) {
         List<GroupModel> activeGroups = groupRepository.findByIsActiveTrue();
         List<ChainModel> activeChains = groupId == null
                 ? chainRepository.findByIsActiveTrueOrderByCreatedAtDesc()
                 : chainRepository.findByGroup_GroupIdAndIsActiveTrueOrderByCreatedAtDesc(groupId);
+        List<BrandModel> activeBrands = brandRepository.findByIsActiveTrueOrderByCreatedAtDesc().stream()
+                .filter(brand -> companyId == null || brand.getChain().getChainId().equals(companyId))
+                .filter(brand -> groupId == null || brand.getChain().getGroup().getGroupId().equals(groupId))
+                .toList();
         model.addAttribute("groups", activeGroups);
         model.addAttribute("totalGroups", activeGroups.size());
         model.addAttribute("chains", activeChains);
         model.addAttribute("totalChains", activeChains.size());
+        model.addAttribute("brands", activeBrands);
+        model.addAttribute("totalBrands", activeBrands.size());
+        model.addAttribute("brandCompanies", chainRepository.findByIsActiveTrueOrderByCreatedAtDesc());
         model.addAttribute("selectedGroupId", groupId);
+        model.addAttribute("selectedCompanyId", companyId);
         return "dashboard";
+    }
+
+    @GetMapping("/brands/add")
+    public String addBrandForm(Model model) {
+        model.addAttribute("companies", chainRepository.findByIsActiveTrueOrderByCreatedAtDesc());
+        model.addAttribute("formAction", "/brands/add");
+        return "brand_form";
+    }
+
+    @PostMapping("/brands/add")
+    public String addBrand(@RequestParam(required = false) String brandName,
+                           @RequestParam(required = false) Integer chainId,
+                           Model model, RedirectAttributes redirectAttributes) {
+        String trimmedName = brandName == null ? "" : brandName.trim();
+        Optional<ChainModel> chain = chainId == null ? Optional.empty() : chainRepository.findById(chainId);
+        if (trimmedName.isEmpty() || trimmedName.length() > 50) {
+            model.addAttribute("error", "Brand name is required and cannot exceed 50 characters.");
+        } else if (chain.isEmpty() || !Boolean.TRUE.equals(chain.get().getIsActive())) {
+            model.addAttribute("error", "Select an active company.");
+        }
+        if (model.containsAttribute("error")) {
+            model.addAttribute("companies", chainRepository.findByIsActiveTrueOrderByCreatedAtDesc());
+            model.addAttribute("brandName", brandName);
+            model.addAttribute("selectedChainId", chainId);
+            return "brand_form";
+        }
+
+        BrandModel brand = new BrandModel();
+        brand.setBrandName(trimmedName);
+        brand.setChain(chain.orElseThrow());
+        brand.setIsActive(true);
+        brandRepository.save(brand);
+        redirectAttributes.addFlashAttribute("success", "Brand added successfully.");
+        return "redirect:/#brands";
+    }
+
+    @GetMapping("/brands/edit/{id}")
+    public String editBrandForm(@PathVariable Integer id, Model model, RedirectAttributes redirectAttributes) {
+        Optional<BrandModel> brand = brandRepository.findById(id);
+        if (brand.isEmpty() || !Boolean.TRUE.equals(brand.get().getIsActive())) {
+            redirectAttributes.addFlashAttribute("error", "Active brand not found.");
+            return "redirect:/#brands";
+        }
+        model.addAttribute("brand", brand.get());
+        model.addAttribute("companies", chainRepository.findByIsActiveTrueOrderByCreatedAtDesc());
+        model.addAttribute("selectedChainId", brand.get().getChain().getChainId());
+        model.addAttribute("formAction", "/brands/edit/" + id);
+        return "brand_form";
+    }
+
+    @PostMapping("/brands/edit/{id}")
+    public String editBrand(@PathVariable Integer id,
+                            @RequestParam(required = false) String brandName,
+                            @RequestParam(required = false) Integer chainId,
+                            Model model, RedirectAttributes redirectAttributes) {
+        Optional<BrandModel> brand = brandRepository.findById(id);
+        Optional<ChainModel> chain = chainId == null ? Optional.empty() : chainRepository.findById(chainId);
+        String trimmedName = brandName == null ? "" : brandName.trim();
+        String error = brand.isEmpty() || !Boolean.TRUE.equals(brand.get().getIsActive())
+                ? "Active brand not found."
+                : trimmedName.isEmpty() || trimmedName.length() > 50
+                    ? "Brand name is required and cannot exceed 50 characters."
+                    : chain.isEmpty() || !Boolean.TRUE.equals(chain.get().getIsActive())
+                        ? "Select an active company." : null;
+        if (error != null) {
+            if (brand.isEmpty() || !Boolean.TRUE.equals(brand.get().getIsActive())) {
+                redirectAttributes.addFlashAttribute("error", error);
+                return "redirect:/#brands";
+            }
+            model.addAttribute("error", error);
+            model.addAttribute("brand", brand.get());
+            model.addAttribute("companies", chainRepository.findByIsActiveTrueOrderByCreatedAtDesc());
+            model.addAttribute("brandName", brandName);
+            model.addAttribute("selectedChainId", chainId);
+            model.addAttribute("formAction", "/brands/edit/" + id);
+            return "brand_form";
+        }
+
+        brand.get().setBrandName(trimmedName);
+        brand.get().setChain(chain.get());
+        brandRepository.save(brand.get());
+        redirectAttributes.addFlashAttribute("success", "Brand updated successfully.");
+        return "redirect:/#brands";
+    }
+
+    @PostMapping("/brands/delete/{id}")
+    public String deleteBrand(@PathVariable Integer id, RedirectAttributes redirectAttributes) {
+        Optional<BrandModel> brand = brandRepository.findById(id);
+        if (brand.isEmpty() || !Boolean.TRUE.equals(brand.get().getIsActive())) {
+            redirectAttributes.addFlashAttribute("error", "Active brand not found.");
+        } else if (zoneRepository.existsByBrand_BrandId(id)) {
+            redirectAttributes.addFlashAttribute("error", "This brand is linked to one or more zones and cannot be deleted.");
+        } else {
+            brand.get().setIsActive(false);
+            brandRepository.save(brand.get());
+            redirectAttributes.addFlashAttribute("success", "Brand deactivated successfully.");
+        }
+        return "redirect:/#brands";
     }
 
     @GetMapping("/chains/add")

@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title th:text="${brand == null ? 'Add Brand' : 'Edit Brand'}">Manage Brand</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 30px; background: #f6f7f9; }
+        .container { max-width: 520px; margin: auto; background: white; padding: 20px; border-radius: 8px; }
+        label { display: block; margin-top: 12px; }
+        input, select { width: 100%; padding: 10px; margin-top: 6px; box-sizing: border-box; }
+        button { margin-top: 15px; padding: 10px 15px; background: #0b6e4f; color: white; border: none; border-radius: 6px; }
+        .error { color: #a94442; margin-bottom: 10px; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1 th:text="${brand == null ? 'Add Brand' : 'Edit Brand'}">Manage Brand</h1>
+    <div th:if="${error}" class="error" th:text="${error}"></div>
+    <form th:action="${formAction}" method="post">
+        <label for="brandName">Brand Name</label>
+        <input id="brandName" name="brandName" type="text" maxlength="50" required
+               th:value="${brandName != null ? brandName : (brand != null ? brand.brandName : '')}">
+
+        <label for="chainId">Company</label>
+        <select id="chainId" name="chainId" required>
+            <option value="">Select a company</option>
+            <option th:each="company : ${companies}"
+                    th:value="${company.chainId}"
+                    th:text="${company.companyName + ' (Chain #' + company.chainId + ')'}"
+                    th:selected="${selectedChainId != null and selectedChainId == company.chainId}">Company</option>
+        </select>
+        <p th:if="${#lists.isEmpty(companies)}">Create an active company before adding a brand.</p>
+        <button type="submit" th:disabled="${#lists.isEmpty(companies)}">Save Brand</button>
+    </form>
+    <p><a th:href="@{/#brands}">Back to Dashboard</a></p>
+</div>
+</body>
+</html>
