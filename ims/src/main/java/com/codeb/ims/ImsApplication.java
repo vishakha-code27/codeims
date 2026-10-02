@@ -13,10 +13,13 @@ import jakarta.persistence.ManyToOne;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
     import org.springframework.boot.CommandLineRunner;
+    import org.springframework.beans.factory.annotation.Autowired;
     import org.springframework.beans.factory.annotation.Value;
     import org.springframework.context.annotation.Bean;
     import org.springframework.context.annotation.Configuration;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
     import org.springframework.security.config.annotation.web.builders.HttpSecurity;
     import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
     import org.springframework.security.core.userdetails.UserDetailsService;
@@ -38,10 +41,26 @@ import org.springframework.web.bind.annotation.ResponseBody;
     import org.springframework.mail.SimpleMailMessage;
     import org.springframework.mail.MailException;
     import org.springframework.mail.javamail.JavaMailSender;
+    import org.springframework.mail.javamail.MimeMessageHelper;
     import org.springframework.transaction.annotation.Transactional;
+    import org.springframework.http.HttpHeaders;
+    import org.springframework.http.MediaType;
+    import org.springframework.http.ResponseEntity;
+    import jakarta.mail.MessagingException;
+    import jakarta.mail.internet.MimeMessage;
+    import com.lowagie.text.Document;
+    import com.lowagie.text.DocumentException;
+    import com.lowagie.text.PageSize;
+    import com.lowagie.text.Paragraph;
+    import com.lowagie.text.Phrase;
+    import com.lowagie.text.pdf.PdfPTable;
+    import com.lowagie.text.pdf.PdfWriter;
 
+    import java.io.ByteArrayOutputStream;
+    import java.io.IOException;
 import java.time.LocalDateTime;
 import java.time.LocalDate;
+    import java.security.SecureRandom;
 import java.util.List;
     import java.util.Locale;
     import java.util.Optional;
@@ -222,6 +241,32 @@ class Invoice {
     private String status;
         private String paymentMethod;
         private String paymentReference;
+        @Column(name = "invoice_no", unique = true)
+        private Integer invoiceNo;
+        @ManyToOne(fetch = FetchType.EAGER)
+        @JoinColumn(name = "estimated_id")
+        private SalesEstimate estimate;
+        @ManyToOne(fetch = FetchType.EAGER)
+        @JoinColumn(name = "chain_id")
+        private Chain chain;
+        @Column(name = "service_details")
+        private String serviceDetails;
+        private Integer qty;
+        @Column(name = "cost_per_qty")
+        private Double costPerQty;
+        @Column(name = "amount_payable")
+        private Double amountPayable;
+        private Double balance;
+        @Column(name = "date_of_payment")
+        private LocalDate dateOfPayment;
+        @Column(name = "date_of_service")
+        private LocalDate dateOfService;
+        @Column(name = "delivery_details")
+        private String deliveryDetails;
+        @Column(name = "email_id")
+        private String emailId;
+        @Column(name = "company_name")
+        private String companyName;
 
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
@@ -243,6 +288,32 @@ class Invoice {
         public void setPaymentMethod(String paymentMethod) { this.paymentMethod = paymentMethod; }
         public String getPaymentReference() { return paymentReference; }
         public void setPaymentReference(String paymentReference) { this.paymentReference = paymentReference; }
+    public Integer getInvoiceNo() { return invoiceNo; }
+    public void setInvoiceNo(Integer invoiceNo) { this.invoiceNo = invoiceNo; }
+    public SalesEstimate getEstimate() { return estimate; }
+    public void setEstimate(SalesEstimate estimate) { this.estimate = estimate; }
+    public Chain getChain() { return chain; }
+    public void setChain(Chain chain) { this.chain = chain; }
+    public String getServiceDetails() { return serviceDetails; }
+    public void setServiceDetails(String serviceDetails) { this.serviceDetails = serviceDetails; }
+    public Integer getQty() { return qty; }
+    public void setQty(Integer qty) { this.qty = qty; }
+    public Double getCostPerQty() { return costPerQty; }
+    public void setCostPerQty(Double costPerQty) { this.costPerQty = costPerQty; }
+    public Double getAmountPayable() { return amountPayable; }
+    public void setAmountPayable(Double amountPayable) { this.amountPayable = amountPayable; }
+    public Double getBalance() { return balance; }
+    public void setBalance(Double balance) { this.balance = balance; }
+    public LocalDate getDateOfPayment() { return dateOfPayment; }
+    public void setDateOfPayment(LocalDate dateOfPayment) { this.dateOfPayment = dateOfPayment; }
+    public LocalDate getDateOfService() { return dateOfService; }
+    public void setDateOfService(LocalDate dateOfService) { this.dateOfService = dateOfService; }
+    public String getDeliveryDetails() { return deliveryDetails; }
+    public void setDeliveryDetails(String deliveryDetails) { this.deliveryDetails = deliveryDetails; }
+    public String getEmailId() { return emailId; }
+    public void setEmailId(String emailId) { this.emailId = emailId; }
+    public String getCompanyName() { return companyName; }
+    public void setCompanyName(String companyName) { this.companyName = companyName; }
 }
 
 @Entity
@@ -324,7 +395,11 @@ interface GroupRepository extends JpaRepository<CustomerGroup, Long> {
     Optional<CustomerGroup> findByGroupNameIgnoreCase(String groupName);
 }
 
-interface InvoiceRepository extends JpaRepository<Invoice, Long> {}
+interface InvoiceRepository extends JpaRepository<Invoice, Long> {
+    boolean existsByInvoiceNo(Integer invoiceNo);
+    @Query("select i from Invoice i where i.id = :id")
+    Optional<Invoice> findInvoiceById(@Param("id") Long id);
+}
 
 interface EstimateRepository extends JpaRepository<Estimate, Long> {}
 
@@ -403,6 +478,8 @@ interface SalesEstimateRepository extends JpaRepository<SalesEstimate, Long> {}
 
 @Service
 class ImsService {
+    private static final SecureRandom INVOICE_RANDOM = new SecureRandom();
+    private static final System.Logger LOGGER = System.getLogger(ImsService.class.getName());
     private final ClientRepository clientRepository;
     private final HierarchyRepository hierarchyRepository;
     private final ChainRepository chainRepository;
@@ -412,7 +489,10 @@ class ImsService {
     private final SalesEstimateRepository salesEstimateRepository;
         private final UserRepository userRepository;
         private final PasswordEncoder passwordEncoder;
+    private final JavaMailSender mailSender;
+    private final String mailFrom;
 
+    @Autowired
     public ImsService(ClientRepository clientRepository,
                       HierarchyRepository hierarchyRepository,
                       ChainRepository chainRepository,
@@ -421,7 +501,9 @@ class ImsService {
                           EstimateRepository estimateRepository,
                           SalesEstimateRepository salesEstimateRepository,
                           UserRepository userRepository,
-                          PasswordEncoder passwordEncoder) {
+                          PasswordEncoder passwordEncoder,
+                          JavaMailSender mailSender,
+                          @Value("${ims.mail.from:noreply@localhost}") String mailFrom) {
         this.clientRepository = clientRepository;
         this.hierarchyRepository = hierarchyRepository;
         this.chainRepository = chainRepository;
@@ -431,6 +513,8 @@ class ImsService {
         this.salesEstimateRepository = salesEstimateRepository;
                 this.userRepository = userRepository;
                 this.passwordEncoder = passwordEncoder;
+            this.mailSender = mailSender;
+            this.mailFrom = mailFrom;
     }
 
     public List<Client> getAllClients() { return clientRepository.findAll(); }
@@ -485,6 +569,145 @@ class ImsService {
 
     public List<Invoice> getAllInvoices() { return invoiceRepository.findAll(); }
     public void saveInvoice(Invoice invoice) { invoiceRepository.save(invoice); }
+
+    public SalesEstimate getSalesEstimate(Long id) {
+        return salesEstimateRepository.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Estimate not found"));
+    }
+
+    public Invoice getInvoice(Long id) {
+        return invoiceRepository.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Invoice not found"));
+    }
+
+    public int generateInvoiceNumber() {
+        for (int attempt = 0; attempt < 1000; attempt++) {
+            int candidate = 1000 + INVOICE_RANDOM.nextInt(9000);
+            if (!invoiceRepository.existsByInvoiceNo(candidate)) return candidate;
+        }
+        throw new ResponseStatusException(HttpStatus.CONFLICT, "Unable to allocate an invoice number");
+    }
+
+    @Transactional
+    public Invoice createEstimateInvoice(Long estimateId, Integer invoiceNo, String email) {
+        if (invoiceNo == null || invoiceNo < 1000 || invoiceNo > 9999
+                || invoiceRepository.existsByInvoiceNo(invoiceNo)) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "Invoice number is no longer available; please generate the invoice again");
+        }
+        if (email == null || !email.trim().matches("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$")) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Enter a valid customer email address");
+        }
+        SalesEstimate estimate = getSalesEstimate(estimateId);
+        Invoice invoice = new Invoice();
+        invoice.setInvoiceNo(invoiceNo);
+        invoice.setEstimate(estimate);
+        invoice.setChain(estimate.getChain());
+        invoice.setClientName(estimate.getChain().getChainName());
+        invoice.setCompanyName(estimate.getChain().getBrandName());
+        invoice.setServiceDetails(estimate.getService());
+        invoice.setQty(estimate.getQty());
+        invoice.setCostPerQty(estimate.getCostPerUnit());
+        invoice.setAmountPayable(estimate.getTotalCost());
+        invoice.setBalance(0.0);
+        invoice.setDateOfPayment(LocalDate.now());
+        invoice.setDateOfService(estimate.getDeliveryDate());
+        invoice.setDeliveryDetails(estimate.getDeliveryDetails());
+        invoice.setEmailId(email.trim());
+        invoice.setAmount(estimate.getTotalCost());
+        invoice.setGstRate(0);
+        invoice.setGstAmount(0);
+        invoice.setGstType("INTRA_STATE");
+        invoice.setTotalAmount(estimate.getTotalCost());
+        invoice.setStatus("Paid");
+        invoice.setPaymentMethod("Paid");
+        return invoiceRepository.save(invoice);
+    }
+
+    @Transactional
+    public Invoice updateInvoiceEmail(Long id, String email) {
+        if (email == null || !email.trim().matches("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$")) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Enter a valid customer email address");
+        }
+        Invoice invoice = getInvoice(id);
+        if (invoice.getInvoiceNo() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "This invoice is not estimate-linked");
+        }
+        invoice.setEmailId(email.trim());
+        return invoiceRepository.save(invoice);
+    }
+
+    @Transactional
+    public void deleteInvoice(Long id) {
+        invoiceRepository.delete(getInvoice(id));
+    }
+
+    public byte[] createInvoicePdf(Long id) {
+        Invoice invoice = getInvoice(id);
+        if (invoice.getInvoiceNo() == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Estimate invoice not found");
+        }
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+        Document document = new Document(PageSize.A4);
+        try {
+            PdfWriter.getInstance(document, output);
+            document.open();
+            document.add(new Paragraph("INVOICE"));
+            document.add(new Paragraph("Invoice No: " + invoice.getInvoiceNo()));
+            document.add(new Paragraph("Estimate ID: " + invoice.getEstimate().getEstimatedId()));
+            document.add(new Paragraph("Chain ID: " + invoice.getChain().getChainId()));
+            document.add(new Paragraph("Company: " + safePdfText(invoice.getCompanyName())));
+            document.add(new Paragraph("Bill to: " + safePdfText(invoice.getClientName())));
+            document.add(new Paragraph("Email: " + safePdfText(invoice.getEmailId())));
+            document.add(new Paragraph("Date of payment: " + invoice.getDateOfPayment()));
+            document.add(new Paragraph("Date of service: " + invoice.getDateOfService()));
+            document.add(new Paragraph("Delivery details: " + safePdfText(invoice.getDeliveryDetails())));
+            document.add(new Paragraph(" "));
+            PdfPTable table = new PdfPTable(4);
+            table.setWidthPercentage(100);
+            table.addCell(new Phrase("Service"));
+            table.addCell(new Phrase("Quantity"));
+            table.addCell(new Phrase("Cost per quantity"));
+            table.addCell(new Phrase("Amount payable"));
+            table.addCell(new Phrase(safePdfText(invoice.getServiceDetails())));
+            table.addCell(new Phrase(String.valueOf(invoice.getQty())));
+            table.addCell(new Phrase("INR " + invoiceMoney(invoice.getCostPerQty())));
+            table.addCell(new Phrase("INR " + invoiceMoney(invoice.getAmountPayable())));
+            document.add(table);
+            document.add(new Paragraph("Balance: INR " + invoiceMoney(invoice.getBalance())));
+            document.close();
+            return output.toByteArray();
+        } catch (DocumentException exception) {
+            throw new IllegalStateException("Unable to generate invoice PDF", exception);
+        } finally {
+            if (document.isOpen()) document.close();
+        }
+    }
+
+    public boolean emailInvoice(Invoice invoice) {
+        try {
+            MimeMessage message = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, true, StandardCharsets.UTF_8.name());
+            helper.setFrom(mailFrom);
+            helper.setTo(invoice.getEmailId());
+            helper.setSubject("Invoice " + invoice.getInvoiceNo());
+            helper.setText("Attached is your invoice " + invoice.getInvoiceNo() + ".");
+            helper.addAttachment("invoice-" + invoice.getInvoiceNo() + ".pdf",
+                    new org.springframework.core.io.ByteArrayResource(createInvoicePdf(invoice.getId())));
+            mailSender.send(message);
+            return true;
+        } catch (MailException | MessagingException exception) {
+            LOGGER.log(System.Logger.Level.ERROR, "Invoice email could not be sent for invoice " + invoice.getInvoiceNo(), exception);
+            return false;
+        }
+    }
+
+    private static String invoiceMoney(Double amount) {
+        return String.format(Locale.ROOT, "%,.2f", amount == null ? 0.0 : amount);
+    }
+
+    private static String safePdfText(String value) {
+        return value == null ? "-" : value.replaceAll("[^\\x20-\\x7E]", "?");
+    }
 
     public List<Estimate> getAllEstimates() { return estimateRepository.findAll(); }
     public void saveEstimate(Estimate estimate) { estimateRepository.save(estimate); }
@@ -743,7 +966,7 @@ class ImsController {
                     .stat{background:var(--white);border:1px solid var(--line);padding:16px 18px}.stat label{display:block;color:var(--muted);font-size:13px}.stat strong{font-size:24px}
                     section{margin:30px 0}h2{font-size:18px;margin:0 0 12px}form.entry{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 12px}
                     input,select,button{font:inherit;padding:9px 11px;border:1px solid #c7d2ca;border-radius:4px;background:white;color:var(--ink)}input,select{min-width:135px;flex:1}
-                    button{background:var(--green);border-color:var(--green);color:white;cursor:pointer;font-weight:600}button:hover{filter:brightness(1.1)}button.secondary{background:#fff;color:var(--ink);border-color:var(--line)}
+                    button{background:var(--green);border-color:var(--green);color:white;cursor:pointer;font-weight:600}button:hover{filter:brightness(1.1)}button.secondary{background:#fff;color:var(--ink);border-color:var(--line)}.button-link{display:inline-block;padding:7px 11px;background:var(--green);color:#fff;text-decoration:none;border-radius:4px}.danger{background:#a83232;border-color:#a83232}.inline-form{display:inline-block;margin-left:8px}#invoice-search{margin-bottom:12px;width:min(100%,440px)}
                     .table-wrap{overflow:auto;background:white;border:1px solid var(--line)}table{width:100%;border-collapse:collapse;min-width:700px}th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top}th{font-size:12px;text-transform:uppercase;color:var(--muted);background:#f8faf8}td form{margin:0}td input,td select{min-width:100px;padding:6px}.muted{color:var(--muted)}.admin{border-top:3px solid var(--lime);padding-top:20px}
                     @media(max-width:980px){.stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
                     @media(max-width:680px){header{align-items:flex-start;padding:18px;flex-direction:column}main{margin:18px auto;padding:0 14px}.stats{grid-template-columns:1fr}.stat{padding:12px 15px}}
@@ -808,7 +1031,7 @@ class ImsController {
                 html.append("</select><input name='service' maxlength='100' placeholder='Service' required><input type='number' name='qty' min='1' step='1' placeholder='Quantity' required>")
                     .append("<input type='number' name='costPerUnit' min='0.01' step='0.01' placeholder='Cost per unit (INR)' required><input type='date' name='deliveryDate' required>")
                     .append("<input name='deliveryDetails' maxlength='100' placeholder='Delivery details'><button>Create estimate</button></form>")
-                    .append("<div class='table-wrap'><table><tr><th>Client / hierarchy</th><th>Service</th><th>Qty</th><th>Unit cost</th><th>Total</th><th>Delivery</th><th>Status</th><th>Update</th></tr>");
+                    .append("<div class='table-wrap'><table><tr><th>Client / hierarchy</th><th>Service</th><th>Qty</th><th>Unit cost</th><th>Total</th><th>Delivery</th><th>Status</th><th>Update</th><th>Invoice</th></tr>");
                 for (SalesEstimate estimate : estimates) {
                 Chain chain = estimate.getChain();
                 html.append("<tr><td>").append(escape(chain.getChainName())).append("<br><span class='muted'>")
@@ -821,11 +1044,97 @@ class ImsController {
                 for (String status : List.of("Draft", "Sent", "Approved", "Rejected")) {
                     html.append("<option").append(status.equals(estimate.getStatus()) ? " selected" : "").append(">").append(status).append("</option>");
                 }
-                html.append("</select><button>Save</button></form></td></tr>");
+                html.append("</select><button>Save</button></form></td><td><a class='button-link' href='/estimates/")
+                    .append(estimate.getEstimatedId()).append("/invoice'>Generate</a></td></tr>");
                 }
-                html.append("</table></div></section>");
+                html.append("</table></div></section><section><h2>Manage invoices</h2>")
+                    .append("<input id='invoice-search' type='search' placeholder='Search invoice, estimate, chain, or company' aria-label='Search invoices'>")
+                    .append("<div class='table-wrap'><table id='invoice-table'><thead><tr><th>Invoice No.</th><th>Estimate ID</th><th>Chain ID</th><th>Company</th><th>Service</th><th>Amount</th><th>Email</th><th>Actions</th></tr></thead><tbody>");
+                for (Invoice invoice : invoices) {
+                    if (invoice.getInvoiceNo() == null) continue;
+                    String estimateId = invoice.getEstimate() == null ? "-" : String.valueOf(invoice.getEstimate().getEstimatedId());
+                    String chainId = invoice.getChain() == null ? "-" : String.valueOf(invoice.getChain().getChainId());
+                    html.append("<tr data-search='").append(escape(invoice.getInvoiceNo() + " " + estimateId + " " + chainId + " " + invoice.getCompanyName()))
+                        .append("'><td>").append(invoice.getInvoiceNo()).append("</td><td>").append(estimateId)
+                        .append("</td><td>").append(chainId).append("</td><td>").append(escape(invoice.getCompanyName()))
+                        .append("</td><td>").append(escape(invoice.getServiceDetails())).append("</td><td>INR ").append(money(invoice.getAmountPayable()))
+                        .append("</td><td><form method='post' action='/invoices/").append(invoice.getId()).append("/email'>").append(csrfField(csrf))
+                        .append("<input type='email' name='email' value='").append(escape(invoice.getEmailId())).append("' required><button>Save &amp; resend</button></form></td><td><a href='/invoices/")
+                        .append(invoice.getId()).append("/pdf'>Download PDF</a> <form class='inline-form' method='post' action='/invoices/")
+                        .append(invoice.getId()).append("/delete' onsubmit=\"return confirm('Delete this invoice? This cannot be undone.')\">")
+                        .append(csrfField(csrf)).append("<button class='danger'>Delete</button></form></td></tr>");
+                }
+                html.append("</tbody></table></div><script>document.getElementById('invoice-search').addEventListener('input',function(){const query=this.value.trim().toLowerCase();document.querySelectorAll('#invoice-table tbody tr').forEach(function(row){row.hidden=!row.dataset.search.toLowerCase().includes(query)})})</script></section>");
             if (admin) appendAdminUsers(html, csrf, imsService.getAllUsers());
             return html.append("</main></body></html>").toString();
+        }
+
+        @GetMapping("/estimates/{id}/invoice")
+        @ResponseBody
+        public String invoiceForm(@PathVariable Long id, CsrfToken csrf) {
+            SalesEstimate estimate = imsService.getSalesEstimate(id);
+            Chain chain = estimate.getChain();
+            int invoiceNo = imsService.generateInvoiceNumber();
+            StringBuilder html = new StringBuilder("<!doctype html><html lang='en'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>Generate invoice</title><style>body{margin:0;background:#f3f6f2;color:#17211d;font:15px 'Segoe UI',sans-serif}main{max-width:760px;margin:32px auto;padding:0 20px}h1{font-size:24px}.form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}label{display:grid;gap:5px;color:#53645a}input{font:inherit;padding:10px;border:1px solid #c7d2ca;border-radius:4px;color:#17211d;background:#edf1ed}input[type=email]{background:white}.confirm{display:flex;align-items:center;gap:8px;margin:20px 0;color:#17211d}.confirm input{width:auto}button,a{font:inherit;padding:10px 14px;border-radius:4px}button{border:1px solid #176b4b;background:#176b4b;color:white;cursor:pointer}a{color:#176b4b}@media(max-width:560px){.form-grid{grid-template-columns:1fr}}</style></head><body><main><p><a href='/'>Back to dashboard</a></p><h1>Generate invoice</h1><p>Review the estimate and confirm payment to create and email its invoice.</p><form method='post' action='/estimates/")
+                    .append(id).append("/invoice'>").append(csrfField(csrf))
+                    .append("<input type='hidden' name='invoiceNo' value='").append(invoiceNo).append("'><div class='form-grid'>")
+                    .append(readonlyInvoiceField("Invoice No.", String.valueOf(invoiceNo)))
+                    .append(readonlyInvoiceField("Estimate ID", String.valueOf(estimate.getEstimatedId())))
+                    .append(readonlyInvoiceField("Chain ID", String.valueOf(chain.getChainId())))
+                    .append(readonlyInvoiceField("Company", chain.getBrandName()))
+                    .append(readonlyInvoiceField("Service provided", estimate.getService()))
+                    .append(readonlyInvoiceField("Quantity", String.valueOf(estimate.getQty())))
+                    .append(readonlyInvoiceField("Cost per quantity (INR)", money(estimate.getCostPerUnit())))
+                    .append(readonlyInvoiceField("Amount payable (INR)", money(estimate.getTotalCost())))
+                    .append(readonlyInvoiceField("Balance (INR)", "0.00"))
+                    .append(readonlyInvoiceField("Date of service", String.valueOf(estimate.getDeliveryDate())))
+                    .append(readonlyInvoiceField("Delivery details", estimate.getDeliveryDetails()))
+                    .append("<label>Email ID<input type='email' name='emailId' required maxlength='254'></label></div>")
+                    .append("<label class='confirm'><input type='checkbox' name='paymentConfirmed' value='true' required>Payment has been received in full</label>")
+                    .append("<button type='submit'>Confirm payment &amp; download invoice</button></form></main></body></html>");
+            return html.toString();
+        }
+
+        @PostMapping("/estimates/{id}/invoice")
+        public ResponseEntity<byte[]> createEstimateInvoice(@PathVariable Long id,
+                @RequestParam Integer invoiceNo, @RequestParam String emailId,
+                @RequestParam(defaultValue = "false") boolean paymentConfirmed) {
+            if (!paymentConfirmed) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Confirm payment before generating the invoice");
+            Invoice invoice = imsService.createEstimateInvoice(id, invoiceNo, emailId);
+            boolean emailSent = imsService.emailInvoice(invoice);
+            return invoicePdfResponse(invoice, emailSent ? "sent" : "failed");
+        }
+
+        @GetMapping("/invoices/{id}/pdf")
+        public ResponseEntity<byte[]> downloadInvoice(@PathVariable Long id) {
+            Invoice invoice = imsService.getInvoice(id);
+            if (invoice.getInvoiceNo() == null) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Estimate invoice not found");
+            return invoicePdfResponse(invoice, "not-sent");
+        }
+
+        @PostMapping("/invoices/{id}/email")
+        public String updateInvoiceEmail(@PathVariable Long id, @RequestParam String email) {
+            Invoice invoice = imsService.updateInvoiceEmail(id, email);
+            imsService.emailInvoice(invoice);
+            return "redirect:/";
+        }
+
+        @PostMapping("/invoices/{id}/delete")
+        public String deleteInvoice(@PathVariable Long id) {
+            imsService.deleteInvoice(id);
+            return "redirect:/";
+        }
+
+        private ResponseEntity<byte[]> invoicePdfResponse(Invoice invoice, String emailStatus) {
+            return ResponseEntity.ok()
+                    .contentType(MediaType.APPLICATION_PDF)
+                    .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=invoice-" + invoice.getInvoiceNo() + ".pdf")
+                    .header("X-Invoice-Email-Status", emailStatus)
+                    .body(imsService.createInvoicePdf(invoice.getId()));
+        }
+
+        private static String readonlyInvoiceField(String label, String value) {
+            return "<label>" + escape(label) + "<input readonly value='" + escape(value) + "'></label>";
         }
 
         @GetMapping("/groups")
