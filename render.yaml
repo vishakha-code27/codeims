@@ -31,6 +31,6 @@ services:
     autoDeployTrigger: commit
     envVars:
       - key: IMS_UPSTREAM
-        value: https://codeb-ims.onrender.com
+        value: https://codeims-8.onrender.com
       - key: TASK2_UPSTREAM
-        value: https://ims-zone-demo.onrender.com
+        value: https://codeims-6.onrender.com
