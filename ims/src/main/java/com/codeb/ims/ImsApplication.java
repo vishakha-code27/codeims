@@ -938,10 +938,18 @@ class AccountService {
 class ImsController {
     private final ImsService imsService;
         private final AccountService accountService;
+    private final String groupManagementUrl;
 
-        public ImsController(ImsService imsService, AccountService accountService) {
+        @Autowired
+        public ImsController(ImsService imsService, AccountService accountService,
+                             @Value("${ims.group-management-url}") String groupManagementUrl) {
         this.imsService = imsService;
             this.accountService = accountService;
+        this.groupManagementUrl = groupManagementUrl;
+    }
+
+    public ImsController(ImsService imsService, AccountService accountService) {
+        this(imsService, accountService, "https://codeb-portal.onrender.com/task2/");
     }
 
     @GetMapping({"/", "/personal"})
@@ -974,7 +982,8 @@ class ImsController {
                     """);
             html.append("<header><div><h1>Code-B Internal Management System</h1><small>Signed in as ")
                     .append(escape(authentication.getName())).append(admin ? " · Admin" : " · Employee")
-                    .append("</small></div><form method='post' action='/logout'>").append(csrfField(csrf))
+                    .append("</small></div><a class='button-link' href='").append(escape(groupManagementUrl))
+                    .append("'>Group management</a><form method='post' action='/logout'>").append(csrfField(csrf))
                     .append("<button class='secondary' type='submit'>Sign out</button></form></header><main>")
                     .append("<div class='stats'><div class='stat'><label>Total clients</label><strong>").append(clients.size())
                     .append("</strong></div><div class='stat'><label>Active users</label><strong>").append(imsService.getActiveUserCount())
