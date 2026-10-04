@@ -192,6 +192,9 @@ class ImsApplicationTests {
 		assertTrue(html.contains("Estimate management") && html.contains("name='chainId'")
 				&& html.contains("name='deliveryDate'") && html.contains("Estimated value"));
 		assertTrue(html.contains("Manage invoices") && html.contains("invoice-search"));
+		assertTrue(html.contains("Group management")
+				&& html.contains("href='https://codeb-portal.onrender.com/task2/'"));
+		assertTrue(!html.contains("Open group management"));
 	}
 
 }
