@@ -19,3 +19,18 @@ services:
     dockerContext: ./ims
     healthCheckPath: /login
     autoDeployTrigger: commit
+  - type: web
+    name: codeb-portal
+    runtime: docker
+    plan: free
+    region: singapore
+    branch: main
+    dockerfilePath: ./gateway/Dockerfile
+    dockerContext: ./gateway
+    healthCheckPath: /healthz
+    autoDeployTrigger: commit
+    envVars:
+      - key: IMS_UPSTREAM
+        value: https://codeb-ims.onrender.com
+      - key: TASK2_UPSTREAM
+        value: https://ims-zone-demo.onrender.com

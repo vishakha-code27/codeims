@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Code-B Management</title>
+    <style>
+        :root { color-scheme: light; --ink: #19241f; --muted: #59685f; --paper: #f2f5f1; --green: #176b4b; --line: #d7e0d8; }
+        * { box-sizing: border-box; }
+        body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 24px; background: var(--paper); color: var(--ink); font: 16px/1.5 "Segoe UI", sans-serif; }
+        main { width: min(100%, 760px); }
+        h1 { margin: 0 0 8px; font-size: 30px; }
+        p { margin: 0 0 24px; color: var(--muted); }
+        nav { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
+        a { display: block; padding: 20px; border: 1px solid var(--line); background: #fff; color: var(--ink); text-decoration: none; }
+        a:hover, a:focus-visible { border-color: var(--green); outline: 2px solid var(--green); outline-offset: 2px; }
+        strong { display: block; margin-bottom: 4px; color: var(--green); font-size: 18px; }
+    </style>
+</head>
+<body>
+<main>
+    <h1>Code-B Management</h1>
+    <p>Choose an application to continue.</p>
+    <nav aria-label="Applications">
+        <a href="/ims/"><strong>IMS</strong>Clients, estimates, invoices, and business structure</a>
+        <a href="/task2/"><strong>Group Management</strong>Groups, companies, brands, and zones</a>
+    </nav>
+</main>
+</body>
+</html>
