@@ -1235,13 +1235,13 @@ class ImsController {
         public String register(@RequestParam String username, @RequestParam String email,
                                @RequestParam String password, @RequestParam String confirmPassword, CsrfToken csrf) {
             if (username.isBlank() || !isValidEmail(email) || password.length() < 12 || !password.equals(confirmPassword)) {
-                return registrationPage(csrf, "invalid");
+                return "redirect:/register?error";
             }
             try {
                 accountService.register(username.trim(), email.trim(), password);
                 return "redirect:/login?registered";
             } catch (ResponseStatusException exception) {
-                return registrationPage(csrf, "invalid");
+                return "redirect:/register?error";
             }
         }
 

@@ -197,4 +197,13 @@ class ImsApplicationTests {
 		assertTrue(!html.contains("Open group management"));
 	}
 
+	@Test
+	void invalidRegistrationRedirectsToFormError() {
+		ImsController controller = new ImsController(mock(ImsService.class), mock(AccountService.class));
+		CsrfToken csrfToken = mock(CsrfToken.class);
+
+		assertEquals("redirect:/register?error", controller.register("new-user", "invalid-email",
+				"short", "different", csrfToken));
+	}
+
 }
